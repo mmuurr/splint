@@ -1,13 +1,3 @@
-    
-
-## nested_splint <- splint_dict(list(
-##   l1k1 = splint_simple(as.character, "foo"),
-##   l1k2 = splint_dict(list(
-##     l2k1 = splint_simple(as.character)
-##   ))
-## ))
-
-
 test_that("splint_simple", {
 
   splint <- splint_simple()
@@ -95,15 +85,19 @@ test_that("splint_dict", {
     list(foo = integer(0), bar = character(0))
   )
   expect_identical(
-    splint(list(baz = "qux"), keep_all = TRUE),
-    list(foo = integer(0), bar = character(0), baz = "qux")
-  )
-  expect_identical(
     splint(list(bar = 1:3, baz = "qux")),
     list(foo = integer(0), bar = as.character(1:3))
   )
+
+  splint <- splint_dict(
+    list(
+      foo = splint_simple(as.integer),
+      bar = splint_simple(as.character)
+    ),
+    keep_all = TRUE
+  )
   expect_identical(
-    splint(list(bar = 1:3, baz = "qux"), keep_all = TRUE),
+    splint(list(bar = 1:3, baz = "qux")),
     list(foo = integer(0), bar = as.character(1:3), baz = "qux")
   )
 
@@ -171,7 +165,10 @@ test_that("splint_tbl", {
       foo = splint_simple(as.integer),
       bar = splint_simple(as.character)
     ))
-  expect_error(splint())
+  expect_identical(
+    splint(),
+    tibble::tibble(foo = integer(0), bar = character(0))
+  )
   expect_identical(
     splint(NULL),
     tibble::tibble(foo = integer(0), bar = character(0))
@@ -181,16 +178,16 @@ test_that("splint_tbl", {
     tibble::tibble(foo = integer(0), bar = character(0))
   )
   expect_identical(
-    splint_tbl_ptype(splint),
+    splint_get_ptype_tbl(splint),
     tibble::tibble(foo = integer(0), bar = character(0))
   )
   expect_identical(
     splint(tibble::tibble()),
-    splint_tbl_ptype(splint)
+    splint_get_ptype_tbl(splint)
   )
   expect_identical(
     splint(data.frame()),
-    splint_tbl_ptype(splint)
+    splint_get_ptype_tbl(splint)
   )
   expect_identical(
     splint(iris),
@@ -200,35 +197,36 @@ test_that("splint_tbl", {
     )
   )
   expect_identical(
-    splint(iris, keep_all = TRUE),
-    tibble::tibble(
-      foo = rep(na_int, nrow(iris)),
-      bar = rep(na_chr, nrow(iris))
-    ) |> dplyr::bind_cols(iris)
-  )
-  expect_identical(
     splint(list(foo = 1:3 + 0.1)),
     tibble::tibble(
       foo = as.integer(1:3),
       bar = rep(na_chr, 3)
     )
   )  
+
+  splint2 <- splint_tbl(splint_get_splints(splint), keep_all = TRUE)
+  expect_identical(
+    splint2(iris),
+    tibble::tibble(
+      foo = rep(na_int, nrow(iris)),
+      bar = rep(na_chr, nrow(iris))
+    ) |> dplyr::bind_cols(iris)
+  )
 })
 
 
-test_that("splint_dictcol", {
+test_that("splint_map", {
 
-  expect_error(splint_dictcol(NULL))
+  expect_error(splint_map(NULL))
 
-  expect_identical(splint_dictcol()(NULL), list())
-  expect_identical(splint_dictcol()(list()), list())
+  expect_identical(splint_map()(NULL), list())
+  expect_identical(splint_map()(list()), list())
 
   dict_splint <- splint_dict(list(
     foo = splint_simple(as.integer),
     bar = splint_simple(as.character)
   ))
-
-  splint <- splint_dictcol(dict_splint)
+  splint <- splint_map(dict_splint)
   expect_error(splint())
   expect_identical(
     splint(list(NULL, NULL)),
@@ -251,13 +249,6 @@ test_that("splint_dictcol", {
       list(foo = integer(0), bar = character(0))
     )
   )
-  expect_identical(
-    splint(list(NULL, list(foo = 1:3, baz = "qux")), keep_all = TRUE),
-    list(
-      list(foo = integer(0), bar = character(0)),
-      list(foo = 1:3, bar = character(0), baz = "qux")
-    )
-  )
 
   ## non-recursive with tbl:
   splint <- splint_tbl(list(
@@ -268,20 +259,19 @@ test_that("splint_dictcol", {
     splint(tibble::tibble(
       foo = list(NULL, NULL, NULL),
       baz = 1:3
-    ), keep_all = TRUE),
+    )),
     tibble::tibble(
       foo = list(NULL, NULL, NULL),
-      bar = list(NULL, NULL, NULL),
-      baz = 1:3
+      bar = list(NULL, NULL, NULL)
     )
   )
 
   ## err if trying to use a splint_dict as a col directly:
   expect_error(splint_tbl(list(foo = dict_splint)))
   
-  ## recurse by either explicitly splinting with map or use the dictcol wrapper:
+  ## recurse by either explicitly splinting with map or use the splint_map wrapper:
   splint <- splint_tbl(list(
-    foo = splint_dictcol(dict_splint),
+    foo = splint_map(dict_splint),
     bar = splint_simple(\(x) purrr::map(x, dict_splint))
   ))
   expect_identical(
@@ -302,12 +292,14 @@ test_that("splint_dictcol", {
 })
 
 
-test_that("answer_log", {
+test_that("nested answer_log", {
+  as_datetime <- function(x) lubridate::as_datetime(x, tz = "UTC")
+  
   answer_log_splint <- splint_tbl(list(
     question_ix   = splint_simple(as.integer),
     player_id     = splint_simple(as.character),
     submission_id = splint_simple(as.character),
-    grade         = splint_dictcol(splint_dict(list(
+    grade         = splint_map(splint_dict(list(
       grader_type                   = splint_simple(as.character, "<MISSING>"),
       requested_player_answer_count = splint_simple(as.integer, 1L),
       submitted_player_answer_count = splint_simple(as.integer, 0L),
@@ -326,10 +318,48 @@ test_that("answer_log", {
       ))
     ))),
     `_seqid`      = splint_simple(as.integer),
-    `_created_at` = splint_simple(lubridate::as_datetime),
-    `_updated_at` = splint_simple(lubridate::as_datetime)
+    `_created_at` = splint_simple(as_datetime),
+    `_updated_at` = splint_simple(as_datetime)
   ))
 
-  answer_log_splint(tibble::tibble(`_seqid` = 1:3))
+  x <- answer_log_splint(tibble::tibble(`_seqid` = 1:3))
+  str(x$grade)
+})
 
+
+test_that("named answer_log", {
+  as_datetime <- function(x) lubridate::as_datetime(x, tz = "UTC")
+
+  splints <- tibble::lst(
+    correct_match_ix_tbl = splint_tbl(list(
+      player_answer_ix     = splint_simple(as.integer),
+      question_answer_ix   = splint_simple(as.integer),
+      weight               = splint_simple(as.double)
+    )),
+    normalized_player_answer_tbl = splint_tbl(list(
+      player_answer_ix             = splint_simple(as.integer),
+      raw                          = splint_simple(as.character),
+      word                         = splint_simple(as.character),
+      phrase                       = splint_simple(as.character)
+    )),
+    grade = splint_dict(list(
+      grade_type =                    splint_simple(as.character, "<MISSING>"),
+      requested_player_answer_count = splint_simple(as.integer, 1L),
+      submitted_player_answer_count = splint_simple(as.integer, 0L),
+      correct_match_count           = splint_simple(as.integer, 0L),
+      correct_match_weightsum       = splint_simple(as.double, 0L),
+      correct_match_ix_tbl          = correct_match_ix_tbl,
+      normalized_player_answer_tbl  = normalized_player_answer_tbl
+    )),
+    answer_log = splint_tbl(list(
+      question_ix   = splint_simple(as.integer),
+      player_id     = splint_simple(as.character),
+      submission_id = splint_simple(as.character),
+      grade         = splint_map(grade),
+      grade2        = splint_simple(\(x) purrr::map(x, grade)),
+      `_seqid`      = splint_simple(as.integer),
+      `_created_at` = splint_simple(as_datetime),
+      `_updated_at` = splint_simple(as_datetime)
+    ))
+  )
 })

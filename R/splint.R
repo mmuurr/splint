@@ -1,140 +1,151 @@
 #' @include utils.R
 
-## All splints are functions that must have at least this signature: f(x, ...).
-## `x` is what's being splinted.
-## `...` allows splints to recurse (if needed).
-##
-## All splint functions:
-## * Inherit from the "splint.splint" (S3) class.
-## * Possess a `missing` attribute which controls behavior when the item is missing.
-##
-## The {splint} package verifies that a splint is a function, but doesn't _validate_ that it works; this is left to the programmer in the context of {splint}'s use.
+
+venn <- function(l, r) {
+  list(
+    both = intersect(l, r),
+    l_only = setdiff(l, r),
+    r_only = setdiff(r, l)
+  )
+}
+
 
 #' @export
 splint_simple <- function(f = identity, missing = NULL) {
   checkmate::assert_function(f)
   force(f)
-  f_splint <- function(x, ...) f(x)
+  new_splint <- function(x, ...) f(x)
   structure(
-    f_splint,
+    new_splint,
     missing = missing,
-    class = c("splint.splint_simple", "splint.splint")
+    class = c("splint.simple_splint", "splint.splint"),
+    f = f
   )
 }
 
 
-#' @param splints A list of splints, each of which must one inherit from any of "splint.splint_simple", "splint.splint_dict", "splint.splint_tbl".
 #' @export
-splint_dict <- function(splints = list()) {
+splint_dict <- function(splints = list(), keep_all = FALSE) {
   checkmate::assert_list(splints, names = "unique")
-  purrr::walk(splints, function(splint) {
-    checkmate::assert_multi_class(
-      splint,
-      c("splint.splint_simple", "splint.splint_dict", "splint.splint_tbl")
-    )
-  })
+  purrr::walk(splints, \(splint) checkmate::assert_class(splint, "splint.splint"))
 
-  f_splint <- function(x, ..., keep_all = FALSE) {
+  force(splints)
+  force(keep_all)
+  
+  new_splint <- function(x = list(), ...) {
     x <- as.list(x)
     checkmate::assert_list(x, names = "unique")
 
-    ## present, missing, extra names w.r.t. x
-    present_names <- intersect(names(x), names(splints))
-    missing_names <- setdiff(names(splints), names(x))
-    extra_names <- setdiff(names(x), names(splints))
+    venn <- venn(names(splints), names(x))
 
-    new_x <- 
-      purrr::imap(splints, function(splint, key) {
-        plck(x, key, .default = splint %@% missing) |> splint(keep_all = keep_all, ...)
-      })
+    new_list <- purrr::imap(splints, function(splint, name) {
+      plck(x, name, .default = splint %@% missing) |> splint()
+    })
 
-    if (isTRUE(keep_all)) new_x <- c(new_x, x[extra_names])
+    if (isTRUE(keep_all)) {
+      new_list <- append(new_list, x[venn$r_only])
+    }
 
-    new_x
+    new_list
   }
 
   structure(
-    f_splint,
+    new_splint,
     missing = NULL,
-    class = c("splint.splint_dict", "splint.splint")
+    splints = splints,
+    class = c("splint.dict_splint", "splint.splint")
   )
 }
 
 
 #' @export
-splint_tbl <- function(splints = list()) {
+splint_tbl <- function(splints = list(), keep_all = FALSE) {
   checkmate::assert_list(splints, names = "unique")
-  purrr::walk(splints, function(splint) {
-    checkmate::assert_multi_class(
-      splint,
-      c("splint.splint_simple", "splint.splint_dictcol")
-    )
-  })
+  purrr::walk(splints, \(splint) checkmate::assert_multi_class(splint, c("splint.simple_splint", "splint.tbl_splint", "splint.map_splint")))
+
+  force(splints)
+  force(keep_all)
 
   ptype_tbl <-
-    purrr::map(splints, function(splint) {
+    purrr::map(splints, \(splint) {
       splint(splint %@% missing) |> vctrs::vec_slice(0)
     }) |>
-    tibble::as_tibble()
-
-  f_splint <- function(x, ..., keep_all = FALSE) {
+    tibble::as_tibble()  ## bind_cols() seems more natural, but: https://github.com/tidyverse/dplyr/issues/6814
+  
+  new_splint <- function(x = data.frame(), ...) {
     x <- tibble::as_tibble(x)
-    checkmate::assert_data_frame(x, col.names = "unique")
+    checkmate::assert_tibble(x, col.names = "unique")
 
-    ## present, missing, extra names w.r.t. x
-    present_names <- intersect(names(x), names(splints))
-    missing_names <- setdiff(names(splints), names(x))
-    extra_names <- setdiff(names(x), names(splints))
+    venn <- venn(names(splints), names(x))
 
-    ## any cols to remove?:
-    if (!isTRUE(keep_all)) x <- x[present_names]
+    ## here we keep `x` as a DF throughout each step.
 
-    ## splint the present names:
-    for (colname in present_names) {
-      x[[colname]] <- splints[[colname]](x[[colname]], keep_all = keep_all, ...)
+    ## remove extra cols if needed (by keeping only those cols present in venn$both), else leave all cols:
+    if (!isTRUE(keep_all)) x <- x[venn$both]
+
+    ## splint the present columns that have defined splints:
+    for (colname in venn$both) {
+      x[[colname]] <- splints[[colname]](x[[colname]])
     }
 
-    ## row-bind with ptype (ptype comes first to enfore col-ordering):
+    ## row-bind with ptype, adding any missing cols.
+    ## ptype comes first to also re-order cols according to splint def.
     x <- dplyr::bind_rows(ptype_tbl, x)
 
-    ## now splint the missing cols that were just added.
-    ## this step is mostly only beneficial for dictcols, which lost type details when zero-lengthed (becoming an ordinary empty list).
-    for (colname in missing_names) {
-      x[[colname]] <- splints[[colname]](x[[colname]], keep_all = keep_all, ...)
+    ## finally, splint any of the new cols that were just added.
+    ## this step allows for recursing into, e.g., list-cols, which are missing type details in the ptype, since they're zero-length 'base' lists.
+    for (colname in venn$l_only) {
+      x[[colname]] <- splints[[colname]](x[[colname]])
     }
 
     x
   }
 
   structure(
-    f_splint,
+    new_splint,
     missing = NULL,
+    splints = splints,
     ptype_tbl = ptype_tbl,
-    class = c("splint.splint_tbl", "splint.splint")
+    class = c("splint.tbl_splint", "splint.splint")
   )
 }
 
 
 #' @export
-splint_dictcol <- function(splint = splint_dict()) {
-  checkmate::assert_class(splint, "splint.splint_dict")
+splint_map <- function(splint = splint_simple()) {
+  checkmate::assert_class(splint, "splint.splint")
   force(splint)
-  
-  f_splint <- function(x, ..., keep_all = TRUE) {
-    x <- as.list(x)
-    purrr::map(x, \(x) splint(x, keep_all = keep_all, ...))
+
+  new_splint <- function(x, ...) {
+    purrr::map(x, splint)
   }
 
   structure(
-    f_splint,
+    new_splint,
     missing = NULL,
-    class = c("splint.splint_dictcol", "splint.splint")
+    splint = splint,
+    class = c("splint.map_splint", "splint.splint")
   )
 }
 
 
 #' @export
-splint_tbl_ptype <- function(splint) {
-  checkmate::assert_class(splint, "splint.splint_tbl")
-  splint %@% ptype_tbl
+splint_get_splints <- function(splint) {
+  if (inherits(splint, "splint.tbl_splint")) {
+    splint %@% splints
+  } else if (inherits(splint, "splint.dict_splint")) {
+    splint %@% splints
+  } else if (inherits(splint, "splint.map_splint")) {
+    list(splint %@% splint)
+  } else {
+    NULL
+  }
 }
+
+
+#' @export
+splint_get_ptype_tbl <- function(tbl_splint) {
+  tbl_splint %@% ptype_tbl
+}
+
+
