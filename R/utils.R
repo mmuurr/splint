@@ -1,5 +1,6 @@
 `%||%` <- rlang::`%||%`
 `%@%`  <- rlang::`%@%`
+`%@%<-`  <- rlang::`%@%<-`
 
 na_lgl <- NA
 na_int <- NA_integer_

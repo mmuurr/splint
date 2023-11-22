@@ -1,25 +1,24 @@
 test_that("splint_simple", {
 
   splint <- splint_simple()
+  checkmate::expect_function(splint)
   expect_identical(splint(), NULL)
   purrr::walk(
     list(NULL, c(TRUE, FALSE), 1L:3L, 1:3, LETTERS, list(), list(foo = "bar"), mtcars),
     \(x) expect_identical(splint(x), x)
   )
 
-  splint <- splint_simple(as.logical, missing = na_chr)
+  splint <- splint_simple(as.logical)
   checkmate::expect_function(splint)
-  expect_identical(splint %@% missing, na_chr)
-  expect_error(splint())
+  expect_identical(splint(), logical(0))
   expect_identical(splint(NULL), logical(0))
   expect_identical(splint(c(TRUE, FALSE)), c(TRUE, FALSE))
   expect_identical(splint(-1:1), c(TRUE, FALSE, TRUE))
   expect_identical(splint(c("TRUE", "FALSE", "true", "false")), c(TRUE, FALSE, TRUE, FALSE))
 
-  splint <- splint_simple(as.integer, missing = na_int)
+  splint <- splint_simple(as.integer)
   checkmate::expect_function(splint)
-  expect_identical(splint %@% missing, na_int)
-  expect_error(splint())
+  expect_identical(splint(), integer(0))
   expect_identical(splint(NULL), integer(0))
   expect_identical(splint(c(FALSE, TRUE)), 0L:1L)
   expect_identical(splint(-1L:1L), -1L:1L)
@@ -28,10 +27,9 @@ test_that("splint_simple", {
     expect_identical(splint(c("1", "foo", "1.1", "1.9", "2")), as.integer(c(1, NA, 1, 1, 2)))
   )
 
-  splint <- splint_simple(as.double, missing = na_dbl)
+  splint <- splint_simple(as.double)
   checkmate::expect_function(splint)
-  expect_identical(splint %@% missing, na_dbl)
-  expect_error(splint())
+  expect_identical(splint(), double(0))
   expect_identical(splint(NULL), double(0))
   expect_identical(splint(c(FALSE, TRUE)), as.double(0:1))
   expect_identical(splint(-1L:1L), as.double(-1:1))
@@ -40,10 +38,9 @@ test_that("splint_simple", {
     expect_identical(splint(c("1", "foo", "1.1", "1.9", "2")), as.double(c(1, NA, 1.1, 1.9, 2)))
   )
   
-  splint <- splint_simple(as.character, missing = "<MISSING>")
+  splint <- splint_simple(as.character)
   checkmate::expect_function(splint)
-  expect_identical(splint %@% missing, "<MISSING>")
-  expect_error(splint())
+  expect_identical(splint(), character(0))
   expect_identical(splint(NULL), character(0))
   expect_identical(splint(c(TRUE, FALSE)), c("TRUE", "FALSE"))
   expect_identical(splint(1L:3L), c("1","2","3"))
@@ -150,6 +147,43 @@ test_that("splint_dict", {
 })
 
 
+test_that("missing_val", {
+  splint <- splint_dict(list(
+    prop_a = splint_simple(as.character),
+    prop_b = splint_simple(as.character) |> splint_if_missing(NULL),
+    prop_c = splint_simple(as.character) |> splint_if_missing(NULL, TRUE),
+    prop_d = splint_simple(as.character, klass = "prop_d_class") |> splint_if_missing(69),
+    prop_e = splint_simple(as.character) |> splint_if_missing(c(6, 9)),
+    prop_f = splint_simple(as.character) |> splint_if_missing(69, TRUE),
+    prop_g = splint_simple(as.character) |> splint_if_missing(c(6, 9), TRUE),
+    prop_z = splint_dict(list(
+      foo = splint_simple(as.logical),
+      bar = splint_simple(as.integer),
+      baz = splint_simple(as.double),
+      qux = splint_simple(as.character)
+    ), klass = "inner_class")
+  ), keep_all = TRUE, klass = "outer_class")
+  
+  expected <- list(
+    prop_a = character(0),
+    prop_b = character(0),
+    prop_c = NULL,
+    prop_d = "69" |> prepend_class("prop_d_class"),
+    prop_e = c("6", "9"),
+    prop_f = 69,
+    prop_g = c(6, 9),
+    prop_z = list(
+      foo = logical(0),
+      bar = integer(0),
+      baz = double(0),
+      qux = character(0)
+    ) |> prepend_class("inner_class")
+  ) |> prepend_class("outer_class")
+  
+  expect_identical(splint(), expected)
+})
+
+
 test_that("splint_tbl", {
 
   expect_error(
@@ -176,18 +210,6 @@ test_that("splint_tbl", {
   expect_identical(
     splint(list()),
     tibble::tibble(foo = integer(0), bar = character(0))
-  )
-  expect_identical(
-    splint_get_ptype_tbl(splint),
-    tibble::tibble(foo = integer(0), bar = character(0))
-  )
-  expect_identical(
-    splint(tibble::tibble()),
-    splint_get_ptype_tbl(splint)
-  )
-  expect_identical(
-    splint(data.frame()),
-    splint_get_ptype_tbl(splint)
   )
   expect_identical(
     splint(iris),
@@ -227,7 +249,6 @@ test_that("splint_map", {
     bar = splint_simple(as.character)
   ))
   splint <- splint_map(dict_splint)
-  expect_error(splint())
   expect_identical(
     splint(list(NULL, NULL)),
     list(
@@ -300,11 +321,11 @@ test_that("nested answer_log", {
     player_id     = splint_simple(as.character),
     submission_id = splint_simple(as.character),
     grade         = splint_map(splint_dict(list(
-      grader_type                   = splint_simple(as.character, "<MISSING>"),
-      requested_player_answer_count = splint_simple(as.integer, 1L),
-      submitted_player_answer_count = splint_simple(as.integer, 0L),
-      correct_match_count           = splint_simple(as.integer, 0L),
-      correct_match_weightsum       = splint_simple(as.double, 0),
+      grader_type                   = splint_simple(as.character) |> splint_if_missing("<MISSING>"),
+      requested_player_answer_count = splint_simple(as.integer) |> splint_if_missing(1),
+      submitted_player_answer_count = splint_simple(as.integer) |> splint_if_missing(1),
+      correct_match_count           = splint_simple(as.integer) |> splint_if_missing(0),
+      correct_match_weightsum       = splint_simple(as.double) |> splint_if_missing(0),
       correct_match_ix_tbl          = splint_tbl(list(
         player_answer_ix   = splint_simple(as.integer),
         question_answer_ix = splint_simple(as.integer),
@@ -343,11 +364,11 @@ test_that("named answer_log", {
       phrase                       = splint_simple(as.character)
     )),
     grade = splint_dict(list(
-      grade_type =                    splint_simple(as.character, "<MISSING>"),
-      requested_player_answer_count = splint_simple(as.integer, 1L),
-      submitted_player_answer_count = splint_simple(as.integer, 0L),
-      correct_match_count           = splint_simple(as.integer, 0L),
-      correct_match_weightsum       = splint_simple(as.double, 0L),
+      grade_type =                    splint_simple(as.character) |> splint_if_missing("<MISSING>"),
+      requested_player_answer_count = splint_simple(as.integer) |> splint_if_missing(1),
+      submitted_player_answer_count = splint_simple(as.integer) |> splint_if_missing(0),
+      correct_match_count           = splint_simple(as.integer) |> splint_if_missing(0),
+      correct_match_weightsum       = splint_simple(as.double) |> splint_if_missing(0),
       correct_match_ix_tbl          = correct_match_ix_tbl,
       normalized_player_answer_tbl  = normalized_player_answer_tbl
     )),
@@ -362,4 +383,100 @@ test_that("named answer_log", {
       `_updated_at` = splint_simple(as_datetime)
     ))
   )
+})
+
+
+test_that("splint_tbl_extend", {
+
+  base_splints <- list(
+    foo = splint_simple(as.logical),
+    bar = splint_simple(as.integer)
+  )
+
+  base_splint_keep <- splint_tbl(base_splints, keep_all = TRUE)
+  base_splint_nokeep <- splint_tbl(base_splints, keep_all = FALSE)
+
+  new_splint <- splint_tbl_extend(
+    base_splint_keep,
+    list(baz = splint_simple(as.character))
+  )
+  expect_identical(
+    new_splint(),
+    tibble::tibble(
+      foo = logical(0),
+      bar = integer(0),
+      baz = character(0)
+    )
+  )
+  expect_identical(
+    new_splint(tibble::tibble(qux = 1:3)),
+    tibble::tibble(
+      foo = rep(na_lgl, 3),
+      bar = rep(na_int, 3),
+      baz = rep(na_chr, 3),
+      qux = 1:3
+    )
+  )
+  expect_identical(
+    new_splint(tibble::tibble(qux = list(list(foo = "bar")))),
+    tibble::tibble(
+      foo = na_lgl,
+      bar = na_int,
+      baz = na_chr,
+      qux = list(list(foo = "bar"))
+    )
+  )
+
+  new_splint <- splint_tbl_extend(
+    base_splint_nokeep,
+    list(baz = splint_simple(as.character))
+  )
+  expect_identical(
+    new_splint(tibble::tibble(qux = 1:3)),
+    tibble::tibble(
+      foo = rep(na_lgl, 3),
+      bar = rep(na_int, 3),
+      baz = rep(na_chr, 3)
+    )
+  )
+
+  ## test setting keep = TRUE for new splint
+  new_splint <- splint_tbl_extend(
+    base_splint_nokeep,
+    list(baz = splint_simple(as.character)),
+    keep_all = TRUE
+  )
+  expect_identical(
+    new_splint(tibble::tibble(qux = 1:3)),
+    tibble::tibble(
+      foo = rep(na_lgl, 3),
+      bar = rep(na_int, 3),
+      baz = rep(na_chr, 3),
+      qux = 1:3
+    )
+  )
+
+  ## test undoing keep = TRUE for new splint
+  new_splint <- splint_tbl_extend(
+    base_splint_keep,
+    list(baz = splint_simple(as.character)),
+    keep_all = FALSE
+  )
+  expect_identical(
+    base_splint_keep(tibble::tibble(qux = 1:3)),
+    tibble::tibble(
+      foo = rep(na_lgl, 3),
+      bar = rep(na_int, 3),
+      qux = 1:3
+    )
+  )
+  expect_identical(
+    new_splint(tibble::tibble(qux = 1:3)),
+    tibble::tibble(
+      foo = rep(na_lgl, 3),
+      bar = rep(na_int, 3),
+      baz = rep(na_chr, 3)
+    )
+  )
+  
 })
