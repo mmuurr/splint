@@ -1,24 +1,7 @@
 #' @include utils.R
 
 
-venn <- function(l, r) {
-  list(
-    both = intersect(l, r),
-    l_only = setdiff(l, r),
-    r_only = setdiff(r, l)
-  )
-}
-
-
-check_dict <- function(x) {
-  check_res <- checkmate::check_list(x, names = "unique")
-  if (isTRUE(check_res)) return(TRUE)
-  sprintf("not a dict: %s", check_res)
-}
-test_dict <- checkmate::makeTestFunction(check_dict)
-assert_dict <- checkmate::makeAssertionFunction(check_dict)
-
-
+## Takes a function and formalizes it as a splint.
 splintify <- function(f, klass = character(0)) {
   checkmate::assert_function(f)
   force(f)
@@ -56,8 +39,6 @@ splint_if_missing <- function(splint, val, exactly = FALSE) {
 
 #' @export
 splint_simple <- function(f = identity, klass = character(0)) {
-  checkmate::assert_function(f)
-  force(f)
   splintify(f, klass) |> prepend_class("splint.simple_splint")
 }  
 
