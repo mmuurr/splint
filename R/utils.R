@@ -1,15 +1,13 @@
-#' @import murlib.core
-#' @import murlib.infix
-
 na_lgl <- murlib.core::na_lgl
 na_int <- murlib.core::na_int
 na_dbl <- murlib.core::na_dbl
 na_chr <- murlib.core::na_chr
 
 
-`%||%` <- murlib.core::`%||%`
-`%|%`  <- murlib.core::`%|%`
-`%0%`  <- murlib.core::`%0%`
+`%||%` <- murlib.infix::`%||%`
+`%|%`  <- murlib.infix::`%|%`
+`%0%`  <- murlib.infix::`%0%`
+`%@%`  <- murlib.infix::`%@%`
 
 
 prepend_class <- murlib.core::prepend_class
@@ -28,6 +26,7 @@ venn <- function(l, r) {
 }
 
 
+#' @export
 dict <- murlib.core::dict
 
 check_dict <- function(x) {

@@ -292,7 +292,7 @@ test_that("splint_map", {
   
   ## recurse by either explicitly splinting with map or use the splint_map wrapper:
   splint <- splint_tbl(list(
-    foo = splint_map(dict_splint),
+    foo = dict_splint |> splint_map(),
     bar = splint_simple(\(x) purrr::map(x, dict_splint))
   ))
   expect_identical(
@@ -479,4 +479,77 @@ test_that("splint_tbl_extend", {
     )
   )
   
+})
+
+
+test_that("unforce promises for recursion and circular deps", {
+  as_chr1 <-
+    splint_simple(\(x) as.character(x)[1])
+  as_date1 <-
+    splint_simple(\(x) as.Date(x)[1])
+  
+  as_person <-
+    splint_dict(
+      dict(
+        fname = as_chr1,
+        lname = as_chr1,
+        birthdate = as_date1,
+        mother = splint_simple(as_person, force = FALSE) |> splint_if_missing(NULL, TRUE),
+        father = splint_simple(as_person, force = FALSE) |> splint_if_missing("foo", TRUE)
+      )
+    )
+  
+  expect_identical(
+    as_person(),
+    dict(
+      fname = na_chr,
+      lname = na_chr,
+      birthdate = as.Date(na_lgl),
+      mother = NULL,
+      father = "foo"
+    )
+  )
+
+  dict(
+    fname = "Jerry",
+    lname = "Seinfeld",
+    birthdate = "1954-04-29",
+    mother = dict(fname = "Helen", lname = "Seinfeld"),
+    father = dict(fname = "Morty", lname = "Seinfeld")
+  ) |>
+    as_person() |>
+    expect_identical(dict(
+      fname = "Jerry",
+      lname = "Seinfeld",
+      birthdate = as.Date("1954-04-29"),
+      mother = dict(
+        fname = "Helen",
+        lname = "Seinfeld",
+        birthdate = as.Date(na_lgl),
+        mother = NULL,
+        father = "foo"
+      ),
+      father = dict(
+        fname = "Morty",
+        lname = "Seinfeld",
+        birthdate = as.Date(na_lgl),
+        mother = NULL,
+        father = "foo"
+      )
+    ))
+
+  ## fail due to infinite recursion
+  should_fail <-
+    splint_dict(dict(
+      x = splint_simple(should_fail, force = FALSE)
+    ))
+
+
+  tryCatch({
+    should_fail()
+    TRUE
+  }, error = \(e) {
+    FALSE
+  }) |> expect_false()
+      
 })

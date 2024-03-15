@@ -4,12 +4,12 @@
 \name{splint-package}
 \alias{splint}
 \alias{splint-package}
-\title{splint: What the Package Does (One Line, Title Case)}
+\title{splint: Type Splints}
 \description{
-What the package does (one paragraph).
+Splints are like casts, but weaker (though perhaps more useful).
 }
 \author{
-\strong{Maintainer}: First Last \email{first.last@example.com} (\href{https://orcid.org/YOUR-ORCID-ID}{ORCID})
+\strong{Maintainer}: Murat Tasan \email{mmuurr@gmail.com} (\href{https://orcid.org/YOUR-ORCID-ID}{ORCID})
 
 }
 \keyword{internal}

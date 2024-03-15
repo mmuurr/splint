@@ -2,9 +2,9 @@
 
 
 ## Takes a function and formalizes it as a splint.
-splintify <- function(f, klass = character(0)) {
-  checkmate::assert_function(f)
-  force(f)
+splintify <- function(f, klass = character(0), force = TRUE) {
+  if (isTRUE(force)) checkmate::assert_function(f)  ## base::force(f)
+
   splint <- function(x, ...) {
     if (missing(x)) x <- NULL
     retval <-
@@ -27,6 +27,18 @@ splint_missing_val <- function(val, exactly = FALSE) {
 }
 
 
+#' Explicit missingness instruction
+#' 
+#' This wraps a splint in higher-order splint structures (lists and tbls) and specifies what to do if the element defined by `splint` itself is missing.
+#' If the element is missing, what value do we pass to the constituent splint?
+#' Here we declare that value, `val`.
+#' * If `exactly` is `FALSE`, then `val` is passed to the `splint`.
+#' * If `exactly` is `TRUE`, then the `splint` is bypassed entirely and `val` is simply used in its stead.
+#'
+#' @param splint the splint to wrap.
+#' @param val the value to use when the splint element is missing.
+#' @param exactly should `val` be used _exactly_ (as-is), or should it be passed to `splint()`?
+#' 
 #' @export
 splint_if_missing <- function(splint, val, exactly = FALSE) {
   checkmate::assert_class(splint, "splint.splint")
@@ -37,20 +49,35 @@ splint_if_missing <- function(splint, val, exactly = FALSE) {
 }
 
 
+#' Simple splint
+#'
+#' Wraps a function as a simple, atomic splint.
+#' While the resultant splint itself is 'atomic', `f()` can accept whatever type argument you like.
+#' 
+#' When called (as a function), a simple splint will look at the single passed argument `x`.
+#' * If `x` is missing, set `x` to `NULL`.
+#' * If `x` is a missing-val sentinel (with `val` and `exactly` properties):
+#'   * If `exactly` is `TRUE`, return `val`.
+#'   * Else return `f(val)`.
+#' * Else return `f(x)`.
+#'
+#' @param f the underlying splint function.
+#' @param klass the classname(s) to be prepended to the splint's output.
+#' 
 #' @export
-splint_simple <- function(f = identity, klass = character(0)) {
-  splintify(f, klass) |> prepend_class("splint.simple_splint")
+splint_simple <- function(f = identity, klass = character(0), force = TRUE) {
+  splintify(f, klass, force) |> prepend_class("splint.simple_splint")
 }  
 
 
 #' @export
 splint_dict <- function(splints = list(), keep_all = FALSE, klass = character(0)) {
   ## splints should itself be a dict, each prop of which should be a splint:
-  assert_dict(splints)
+  assert_dict(splints)  ## force(splints)
   purrr::walk(splints, \(splint) checkmate::assert_class(splint, "splint.splint"))
 
-  force(splints)
-  force(keep_all)
+  checkmate::assert_flag(keep_all)  ## force(keep_all)
+  checkmate::assert_character(klass)  ## force(klass)
 
   f <- function(x = list()) {
     ## x should be a dict:
@@ -80,11 +107,11 @@ splint_tbl <- function(splints = list(), keep_all = FALSE, klass = character(0))
   ## * simple_splint,
   ## * tbl_splint, or
   ## * map_splint.
-  assert_dict(splints)
+  assert_dict(splints)  ## force(splints)
   purrr::walk(splints, \(splint) checkmate::assert_multi_class(splint, c("splint.simple_splint", "splint.tbl_splint", "splint.map_splint")))
 
-  force(splints)
-  force(keep_all)
+  checkmate::assert_flag(keep_all)  ## force(keep_all)
+  checkmate::assert_character(klass)  ## force(klass)
 
   ptype_tbl <-
     purrr::map(splints, \(splint) {
@@ -135,8 +162,7 @@ splint_tbl <- function(splints = list(), keep_all = FALSE, klass = character(0))
 #' Most useful as a wrapper around `splint_dict`s for list-cols in a tbl, i.e. for a (list-)col of dicts.
 #' @export
 splint_map <- function(splint = splint_simple()) {
-  checkmate::assert_class(splint, "splint.splint")
-  force(splint)
+  checkmate::assert_class(splint, "splint.splint")  ## force(splint)
 
   f <- function(x) {
     purrr::map(x, splint)
