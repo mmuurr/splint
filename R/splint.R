@@ -195,3 +195,4 @@ splint_tbl_extend <- function(tbl_splint, splints, keep_all = NULL) {
   keep_all <- if (is.null(keep_all)) rlang::get_env(rlang::get_env(tbl_splint)$f)$keep_all else keep_all
   splint_tbl(splints, keep_all)
 }
+

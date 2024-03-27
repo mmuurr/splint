@@ -1,6 +1,6 @@
 Package: splint
 Title: Type Splints
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: 
     person("Murat", "Tasan", email = "mmuurr@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "YOUR-ORCID-ID"))
@@ -25,3 +25,4 @@ Collate:
     'splint-package.R'
     'utils.R'
     'splint.R'
+    'splinted-val.R'
